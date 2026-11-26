@@ -3,7 +3,9 @@ import streamlit as st
 import asyncio
 import re
 
-from database.db import get_connection
+from database.db import get_connection, create_tables
+# Initialize database tables
+create_tables()
 from database.operations import (
     register_student,
     create_project,
