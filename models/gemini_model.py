@@ -5,7 +5,7 @@ load_dotenv()
 
 def get_gemini_model():
     model=ChatGoogleGenerativeAI(
-        model="gemini-flash-latest",
+        model="gemini-3.8-flash",
         google_api_key=os.getenv("GEMINI_API_KEY"),
         temperature=0.7
     )

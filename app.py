@@ -1,7 +1,10 @@
+import asyncio
+import copy
+import html
+import re
+import time
 
 import streamlit as st
-import asyncio
-import re
 
 from database.db import get_connection, create_tables
 # Initialize database tables
@@ -11,6 +14,16 @@ from database.operations import (
     create_project,
     save_agent_output
 )
+
+from user_auth import (
+    EMAIL_RE,
+    init_auth_tables,
+    register_user,
+    authenticate_user,
+    validate_password
+)
+# Initialize the accounts table
+init_auth_tables()
 
 from agents.project_agent import project_recommendation_agent
 from agents.research_agent import research_agent
@@ -23,183 +36,40 @@ from agents.evaluation_agent import evaluation_agent
 
 from mcp_server.server import mcp
 
+from theme import THEME_CSS
+from animations import (
+    ANIM_CSS,
+    ALL_AGENT_NAMES,
+    agent_cards_html,
+    agent_working_html,
+    compact,
+    get_agent,
+    pipeline_tracker_html,
+    stage_flow_html,
+    terminal_html
+)
+
 
 # ==========================================================
 # 1. PAGE CONFIGURATION
 # ==========================================================
 
 st.set_page_config(
-    page_title="ProjectMentor AI",
+    page_title="Innovexa AI",
     page_icon="🎓",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 
 # ==========================================================
-# 2. PROFESSIONAL PASTEL THEME
+# 2. THEME  (see theme.py and animations.py)
 # ==========================================================
 
-st.markdown("""
-<style>
-
-.stApp {
-    background: linear-gradient(
-        135deg,
-        #E9EAFB 0%,
-        #EFF3FC 45%,
-        #E5F3F1 100%
-    );
-    color: #24304A;
-    font-family: "Segoe UI", sans-serif;
-}
-
-.block-container {
-    max-width: 1450px;
-    padding-top: 1.4rem;
-    padding-bottom: 3rem;
-}
-
-[data-testid="stSidebar"] {
-    background: linear-gradient(
-        180deg,
-        #E2E5FA 0%,
-        #E8EFFB 55%,
-        #E0F0ED 100%
-    );
-    border-right: 1px solid #D5DCEF;
-}
-
-[data-testid="stSidebar"] .block-container {
-    padding-top: 1.5rem;
-}
-
-h1, h2, h3, h4 {
-    color: #202B46 !important;
-    letter-spacing: -0.5px;
-}
-
-p, label, li {
-    color: #52617C;
-}
-
-[data-testid="stCaptionContainer"] {
-    color: #73819A;
-}
-
-[data-testid="stHeader"] {
-    background: rgba(233,234,251,0.85);
-}
-
-.stTextInput input,
-.stTextArea textarea {
-    background: #F8F9FF !important;
-    color: #26324D !important;
-    border: 1px solid #CDD5EB !important;
-    border-radius: 10px !important;
-}
-
-.stTextInput input:focus,
-.stTextArea textarea:focus {
-    border-color: #8178E8 !important;
-    box-shadow: 0 0 0 2px rgba(99,91,190,0.12) !important;
-}
-
-.stSelectbox div[data-baseweb="select"],
-.stMultiSelect div[data-baseweb="select"] {
-    background: #F8F9FF !important;
-    border-radius: 10px;
-}
-
-[data-testid="stForm"] {
-    background: rgba(249,250,255,0.88);
-    border: 1px solid #D7DDF0;
-    border-radius: 16px;
-    padding: 24px;
-    box-shadow: 0 5px 20px rgba(61,76,120,0.05);
-}
-
-.stButton > button,
-.stFormSubmitButton > button {
-    background: #DCDDFB !important;
-    color: #34317E !important;
-    -webkit-text-fill-color: #34317E !important;
-    border: 1px solid #BFC2F0 !important;
-    border-radius: 10px !important;
-    min-height: 44px;
-    font-weight: 700 !important;
-    transition: all 0.2s ease;
-}
-
-.stButton > button p,
-.stFormSubmitButton > button p {
-    color: #34317E !important;
-    -webkit-text-fill-color: #34317E !important;
-}
-
-.stButton > button:hover,
-.stFormSubmitButton > button:hover {
-    background: #C9CBF5 !important;
-    color: #29266E !important;
-    -webkit-text-fill-color: #29266E !important;
-    border-color: #A8ABE9 !important;
-    box-shadow: 0 4px 12px rgba(76,70,160,0.12);
-    transform: translateY(-1px);
-}
-
-.stDownloadButton > button {
-    background: #E1F0ED !important;
-    color: #245C55 !important;
-    border: 1px solid #B8DCD3 !important;
-    border-radius: 9px !important;
-    font-weight: 600;
-}
-
-[data-testid="stVerticalBlockBorderWrapper"] {
-    background: rgba(249,250,255,0.78);
-    border: 1px solid #D9DFEF;
-    border-radius: 15px;
-}
-
-[data-testid="stMetric"] {
-    background: #F0F1FD;
-    border: 1px solid #D9DDF2;
-    border-radius: 12px;
-    padding: 15px;
-}
-
-[data-testid="stTabs"] button {
-    color: #596783;
-    font-weight: 600;
-}
-
-[data-testid="stTabs"] button[aria-selected="true"] {
-    color: #5146A5;
-}
-
-[data-testid="stExpander"] {
-    background: #F7F8FE;
-    border: 1px solid #D8DEEF;
-    border-radius: 12px;
-}
-
-div[data-testid="stProgressBar"] > div > div {
-    background: #7773D9;
-}
-
-hr {
-    border-color: #D6DDEE;
-}
-
-@media (max-width: 900px) {
-    .block-container {
-        padding-left: 1rem;
-        padding-right: 1rem;
-    }
-}
-
-</style>
-""", unsafe_allow_html=True)
+st.markdown(
+    THEME_CSS + "\n\n" + ANIM_CSS,
+    unsafe_allow_html=True
+)
 
 
 # ==========================================================
@@ -207,27 +77,33 @@ hr {
 # ==========================================================
 
 defaults = {
+    "user": None,
+    "auth_attempts": 0,
+    "auth_lock_until": 0.0,
     "active_page": "Dashboard",
     "previous_page": "Dashboard",
     "stage": 1,
     "student": None,
-    "history_email": "",
     "recommendations": None,
     "recommendation_titles": [],
     "selected_project": None,
     "project_details": None,
     "outputs": None,
+    "durations": {},
     "project_id": None
 }
 
 for key, value in defaults.items():
     if key not in st.session_state:
-        st.session_state[key] = value
+        st.session_state[key] = copy.deepcopy(value)
 
 
 # ==========================================================
 # 4. HELPER FUNCTIONS
 # ==========================================================
+
+esc = html.escape
+
 
 def navigate(page):
 
@@ -247,14 +123,63 @@ def reset_project():
     st.session_state.selected_project = None
     st.session_state.project_details = None
     st.session_state.outputs = None
+    st.session_state.durations = {}
     st.session_state.project_id = None
     st.session_state.active_page = "Create Project"
+
+
+def sign_out():
+
+    for key, value in defaults.items():
+        st.session_state[key] = copy.deepcopy(value)
 
 
 def go_back(page):
 
     st.session_state.active_page = page
     st.rerun()
+
+
+def to_text(result):
+    """Agents may return a string or a list of content blocks."""
+
+    if isinstance(result, str):
+        return result
+
+    if isinstance(result, list):
+        return "\n".join(
+            item["text"]
+            for item in result
+            if isinstance(item, dict) and "text" in item
+        )
+
+    return str(result)
+
+
+def page_header(kicker, title, subtitle=""):
+
+    sub = f"<p>{subtitle}</p>" if subtitle else ""
+
+    st.markdown(
+        compact(
+            f"""
+            <div class="pm-pagehead">
+            <div class="pm-kicker">{kicker}</div>
+            <h1>{title}</h1>
+            {sub}
+            </div>
+            """
+        ),
+        unsafe_allow_html=True
+    )
+
+
+def section_title(text):
+
+    st.markdown(
+        f'<div class="pm-section">{text}</div>',
+        unsafe_allow_html=True
+    )
 
 
 def extract_project_titles(text):
@@ -325,17 +250,245 @@ def save_plan_using_mcp(project_id, plan):
 
 
 # ==========================================================
-# 5. SIDEBAR
+# 5. SIGN IN / SIGN UP PAGE
 # ==========================================================
+
+def render_auth_page():
+
+    # No sidebar on the login screen.
+    st.markdown(
+        "<style>"
+        "[data-testid='stSidebar'],"
+        "[data-testid='stSidebarCollapsedControl'],"
+        "[data-testid='collapsedControl']{display:none!important;}"
+        "</style>",
+        unsafe_allow_html=True
+    )
+
+    left, right = st.columns([1.15, 1], gap="large")
+
+    with left:
+
+        st.markdown(
+            compact(
+                f"""
+                <div class="pm-auth">
+                <div class="pm-badge"><span class="pm-pulse"></span>8 AI agents online</div>
+                <h1>Build your final-year project <span class="pm-grad">with an AI team</span>.</h1>
+                <p class="lead">
+                From the first idea to research, architecture, code, documentation
+                and evaluation, a team of specialised agents guides every step.
+                </p>
+                {terminal_html("pipeline.log", "innovexa login")}
+                </div>
+                """
+            ),
+            unsafe_allow_html=True
+        )
+
+    with right:
+
+        st.write("")
+        st.write("")
+
+        with st.container(border=True):
+
+            st.markdown(
+                compact(
+                    """
+                    <div class="pm-brand" style="margin:6px 0 10px">
+                    <div class="pm-logo">🎓</div>
+                    <div><b>Innovexa<span class="pm-grad">.ai</span></b>
+                    <small>sign in to your workspace</small></div>
+                    </div>
+                    """
+                ),
+                unsafe_allow_html=True
+            )
+
+            tab_in, tab_up = st.tabs(["Sign in", "Create account"])
+
+            # ---------------- SIGN IN ----------------
+
+            with tab_in:
+
+                with st.form("signin_form"):
+
+                    si_email = st.text_input(
+                        "Email address",
+                        placeholder="you@example.com",
+                        key="si_email"
+                    )
+
+                    si_password = st.text_input(
+                        "Password",
+                        type="password",
+                        placeholder="Your password",
+                        key="si_password"
+                    )
+
+                    signin = st.form_submit_button(
+                        "Sign in →",
+                        use_container_width=True
+                    )
+
+                if signin:
+
+                    wait = int(
+                        st.session_state.auth_lock_until - time.time()
+                    )
+
+                    if wait > 0:
+
+                        st.error(
+                            f"Too many failed attempts. "
+                            f"Please try again in {wait} seconds."
+                        )
+
+                    elif not si_email.strip() or not si_password:
+
+                        st.error("Please enter your email and password.")
+
+                    else:
+
+                        ok, message, user = authenticate_user(
+                            si_email,
+                            si_password
+                        )
+
+                        if ok:
+
+                            st.session_state.auth_attempts = 0
+                            st.session_state.user = user
+                            st.session_state.active_page = "Dashboard"
+                            st.rerun()
+
+                        else:
+
+                            st.session_state.auth_attempts += 1
+
+                            if st.session_state.auth_attempts >= 5:
+                                st.session_state.auth_lock_until = (
+                                    time.time() + 60
+                                )
+                                st.session_state.auth_attempts = 0
+
+                            st.error(message)
+
+            # ---------------- SIGN UP ----------------
+
+            with tab_up:
+
+                with st.form("signup_form"):
+
+                    su_name = st.text_input(
+                        "Full name",
+                        placeholder="Your full name",
+                        key="su_name"
+                    )
+
+                    su_email = st.text_input(
+                        "Email address",
+                        placeholder="you@example.com",
+                        key="su_email"
+                    )
+
+                    col1, col2 = st.columns(2)
+
+                    su_password = col1.text_input(
+                        "Password",
+                        type="password",
+                        placeholder="Min. 8 characters",
+                        key="su_password"
+                    )
+
+                    su_confirm = col2.text_input(
+                        "Confirm password",
+                        type="password",
+                        placeholder="Repeat password",
+                        key="su_confirm"
+                    )
+
+                    st.caption(
+                        "Use at least 8 characters with a letter and a number."
+                    )
+
+                    signup = st.form_submit_button(
+                        "Create account →",
+                        use_container_width=True
+                    )
+
+                if signup:
+
+                    if not su_name.strip() or not su_email.strip():
+
+                        st.error("Please enter your name and email address.")
+
+                    elif not EMAIL_RE.match(su_email.strip()):
+
+                        st.error("Please enter a valid email address.")
+
+                    elif su_password != su_confirm:
+
+                        st.error("The two passwords do not match.")
+
+                    else:
+
+                        problem = validate_password(su_password)
+
+                        if problem:
+
+                            st.error(problem)
+
+                        else:
+
+                            ok, message, user = register_user(
+                                su_name,
+                                su_email,
+                                su_password
+                            )
+
+                            if ok:
+
+                                st.session_state.user = user
+                                st.session_state.active_page = "Dashboard"
+                                st.rerun()
+
+                            else:
+
+                                st.error(message)
+
+
+if st.session_state.user is None:
+    render_auth_page()
+    st.stop()
+
+
+# ==========================================================
+# 6. SIDEBAR  (signed-in users only)
+# ==========================================================
+
+user = st.session_state.user
+first_name = user["full_name"].split()[0]
 
 with st.sidebar:
 
-    st.markdown("## 🎓 ProjectMentor AI")
-    st.caption("Your intelligent project companion")
+    st.markdown(
+        compact(
+            """
+            <div class="pm-brand">
+            <div class="pm-logo">🎓</div>
+            <div><b>Innovexa<span class="pm-grad">.ai</span></b>
+            <small>v2.0 · agent studio</small></div>
+            </div>
+            """
+        ),
+        unsafe_allow_html=True
+    )
 
     st.divider()
 
-    st.markdown("### WORKSPACE")
+    section_title("workspace")
 
     navigation_items = [
         ("Dashboard", "🏠"),
@@ -346,10 +499,13 @@ with st.sidebar:
 
     for page, icon in navigation_items:
 
+        is_active = st.session_state.active_page == page
+
         if st.button(
             f"{icon}  {page}",
             key=f"nav_{page}",
-            use_container_width=True
+            use_container_width=True,
+            type="primary" if is_active else "secondary"
         ):
 
             navigate(page)
@@ -369,34 +525,33 @@ with st.sidebar:
     if st.session_state.student:
 
         st.divider()
-        st.markdown("### CURRENT PROFILE")
-        st.markdown(f"**{st.session_state.student['name']}**")
+        section_title("current profile")
+        st.markdown(f"**{esc(st.session_state.student['name'])}**")
         st.caption(st.session_state.student["domain"])
         st.caption(st.session_state.student["skill_level"])
 
     st.divider()
-    st.caption("ProjectMentor AI · Version 1.0")
 
+    st.markdown(
+        compact(
+            f"""
+            <div class="pm-user">
+            <div class="pm-avatar">{esc(first_name[0].upper())}</div>
+            <div><b>{esc(user['full_name'])}</b><small>{esc(user['email'])}</small></div>
+            </div>
+            """
+        ),
+        unsafe_allow_html=True
+    )
 
-# ==========================================================
-# 6. COMMON PAGE HEADER
-# ==========================================================
+    if st.button(
+        "Sign out",
+        key="sign_out",
+        use_container_width=True
+    ):
 
-st.caption("PROJECTMENTOR AI  /  INTELLIGENT PROJECT DEVELOPMENT")
-
-if st.session_state.active_page == "Dashboard":
-    st.title("Welcome to your workspace")
-
-elif st.session_state.active_page == "Create Project":
-    st.title("Create your next project")
-
-elif st.session_state.active_page == "My Projects":
-    st.title("My Projects")
-
-elif st.session_state.active_page == "Agent Workspace":
-    st.title("AI Development Workspace")
-
-st.divider()
+        sign_out()
+        st.rerun()
 
 
 # ==========================================================
@@ -405,25 +560,51 @@ st.divider()
 
 if st.session_state.active_page == "Dashboard":
 
-    with st.container(border=True):
+    st.markdown(
+        compact(
+            f"""
+            <div class="pm-hero">
+            <div>
+            <div class="pm-badge"><span class="pm-pulse"></span>Hi {esc(first_name)} · all agents online</div>
+            <h1>Turn ideas into <span class="pm-grad">ship-ready projects</span>.</h1>
+            <p class="lead">
+            Discover project ideas that match your skills, pick the one you like
+            and let eight specialised AI agents research, design, plan, code,
+            document and evaluate it with you.
+            </p>
+            </div>
+            {terminal_html("pipeline.log", "innovexa start --agents 8")}
+            </div>
+            """
+        ),
+        unsafe_allow_html=True
+    )
 
-        st.markdown("### Turn your ideas into reality.")
+    st.write("")
 
-        st.write(
-            "Find academic project ideas that match your skills, "
-            "choose the right one and develop it with an AI-powered "
-            "team of specialized agents."
-        )
+    col1, col2 = st.columns(2)
+
+    with col1:
 
         if st.button(
-            "✨ Discover Project Ideas",
+            "✨  Discover project ideas",
+            key="dashboard_discover",
             use_container_width=True
         ):
 
-            navigate("Create Project")
+            reset_project()
             st.rerun()
 
-    st.write("")
+    with col2:
+
+        if st.button(
+            "📁  Open my projects",
+            key="dashboard_projects",
+            use_container_width=True
+        ):
+
+            navigate("My Projects")
+            st.rerun()
 
     connection = get_connection()
 
@@ -431,87 +612,53 @@ if st.session_state.active_page == "Dashboard":
 
         cursor = connection.cursor()
 
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM projects p
+            JOIN students s ON p.student_id = s.student_id
+            WHERE s.email = ?
+            """,
+            (user["email"],)
+        )
+        my_projects = cursor.fetchone()["total"]
+
         cursor.execute("SELECT COUNT(*) AS total FROM projects")
         total_projects = cursor.fetchone()["total"]
-
-        cursor.execute("SELECT COUNT(*) AS total FROM students")
-        total_students = cursor.fetchone()["total"]
 
     finally:
         connection.close()
 
+    section_title("overview")
+
     col1, col2, col3 = st.columns(3)
 
-    col1.metric("Projects Created", total_projects)
-    col2.metric("Registered Students", total_students)
-    col3.metric("AI Agents Available", 8)
+    col1.metric("Your Projects", my_projects)
+    col2.metric("Projects On Platform", total_projects)
+    col3.metric("AI Agents", len(ALL_AGENT_NAMES))
 
-    st.write("")
-    st.markdown("### What would you like to do?")
+    section_title("meet your agent team")
 
-    col1, col2 = st.columns(2)
+    st.markdown(agent_cards_html(), unsafe_allow_html=True)
 
-    with col1:
+    section_title("how it works")
 
-        with st.container(border=True):
-
-            st.markdown("### 💡 Discover Projects")
-
-            st.write(
-                "Get three personalized project recommendations "
-                "based on your skills and interests."
-            )
-
-            if st.button(
-                "Explore Ideas →",
-                key="dashboard_discover",
-                use_container_width=True
-            ):
-
-                navigate("Create Project")
-                st.rerun()
-
-    with col2:
-
-        with st.container(border=True):
-
-            st.markdown("### 📂 View Your Projects")
-
-            st.write(
-                "Access your saved projects and previously generated "
-                "development guidance."
-            )
-
-            if st.button(
-                "View Projects →",
-                key="dashboard_projects",
-                use_container_width=True
-            ):
-
-                navigate("My Projects")
-                st.rerun()
-
-    st.write("")
-    st.markdown("### How ProjectMentor AI works")
-
-    workflow_cols = st.columns(4)
-
-    workflow = [
-        ("01", "Discover", "Get personalized project ideas."),
-        ("02", "Select", "Choose the project you like."),
-        ("03", "Configure", "Describe your project requirements."),
-        ("04", "Develop", "Get guidance from AI agents.")
+    steps = [
+        ("01", "Discover", "Get three personalised project ideas."),
+        ("02", "Select", "Choose the project you like best."),
+        ("03", "Configure", "Describe what the project should do."),
+        ("04", "Develop", "Watch the agents build your package.")
     ]
 
-    for col, item in zip(workflow_cols, workflow):
+    cards = "".join(
+        f'<div class="pm-card"><span class="no">{n}</span><b>{t}</b><small>{d}</small></div>'
+        for n, t, d in steps
+    )
 
-        with col:
-
-            with st.container(border=True):
-
-                st.markdown(f"### {item[0]}")
-                st.markdown(f"**{item[1]}**")
-                st.caption(item[2])
+    st.markdown(
+        f'<div class="pm-grid c4">{cards}</div>',
+        unsafe_allow_html=True
+    )
 
 
 # ==========================================================
@@ -519,6 +666,17 @@ if st.session_state.active_page == "Dashboard":
 # ==========================================================
 
 elif st.session_state.active_page == "Create Project":
+
+    page_header(
+        "~/innovexa / create",
+        "Create your next project",
+        "Tell us about yourself, pick an idea and configure it."
+    )
+
+    st.markdown(
+        stage_flow_html(st.session_state.stage),
+        unsafe_allow_html=True
+    )
 
     if st.button("← Back to Dashboard", key="create_back"):
         go_back("Dashboard")
@@ -544,6 +702,7 @@ elif st.session_state.active_page == "Create Project":
 
                 name = st.text_input(
                     "Full Name",
+                    value=user["full_name"],
                     placeholder="Enter your full name"
                 )
 
@@ -567,9 +726,10 @@ elif st.session_state.active_page == "Create Project":
 
             with col2:
 
-                email = st.text_input(
-                    "Email Address",
-                    placeholder="you@example.com"
+                st.text_input(
+                    "Email Address (from your account)",
+                    value=user["email"],
+                    disabled=True
                 )
 
                 languages = st.multiselect(
@@ -602,24 +762,18 @@ elif st.session_state.active_page == "Create Project":
 
         if submitted:
 
-            if not name.strip() or not email.strip() or not languages:
+            if not name.strip() or not languages:
 
                 st.error(
-                    "Please enter your name, email and programming languages."
+                    "Please enter your name and choose at least "
+                    "one programming language."
                 )
-
-            elif not re.match(
-                r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
-                email.strip()
-            ):
-
-                st.error("Please enter a valid email address.")
 
             else:
 
                 st.session_state.student = {
                     "name": name.strip(),
-                    "email": email.strip(),
+                    "email": user["email"],
                     "skill_level": skill_level,
                     "domain": domain,
                     "languages": languages,
@@ -654,37 +808,44 @@ elif st.session_state.active_page == "Create Project":
                 st.markdown("### Discover projects made for you")
 
                 st.write(
-                    "Our AI recommendation agent will generate "
+                    "Our Project Advisor agent will generate "
                     "three project ideas based on your profile."
                 )
+
+                animation_slot = st.empty()
 
                 if st.button(
                     "✨ Generate 3 Project Ideas",
                     use_container_width=True
                 ):
 
+                    animation_slot.markdown(
+                        agent_working_html("Project Advisor Agent", 0),
+                        unsafe_allow_html=True
+                    )
+
                     try:
 
-                        with st.spinner(
-                            "Analyzing your profile and generating ideas..."
-                        ):
-
-                            result = project_recommendation_agent(
+                        result = to_text(
+                            project_recommendation_agent(
                                 domain=student["domain"],
                                 skill=student["skill_level"],
                                 level=student["skill_level"],
                                 model_type=student["model_type"]
                             )
+                        )
 
-                            st.session_state.recommendations = str(result)
+                        st.session_state.recommendations = result
 
-                            st.session_state.recommendation_titles = (
-                                extract_project_titles(str(result))
-                            )
+                        st.session_state.recommendation_titles = (
+                            extract_project_titles(result)
+                        )
 
                         st.rerun()
 
                     except Exception as e:
+
+                        animation_slot.empty()
 
                         st.error(
                             f"Recommendation generation failed: {e}"
@@ -805,53 +966,19 @@ elif st.session_state.active_page == "Create Project":
 
 
 # ==========================================================
-# 9. MY PROJECTS - CORRECT DATABASE COLUMNS
+# 9. MY PROJECTS  (always the signed-in user's own projects)
 # ==========================================================
 
 elif st.session_state.active_page == "My Projects":
 
+    page_header(
+        "~/innovexa / projects",
+        "My Projects",
+        "Your academic projects and everything the agents generated."
+    )
+
     if st.button("← Back to Dashboard", key="projects_back"):
         go_back("Dashboard")
-
-    st.caption("YOUR PERSONAL PROJECT LIBRARY")
-
-    current_student = st.session_state.student
-
-    if current_student:
-
-        student_email = current_student["email"]
-
-    else:
-
-        st.markdown("### Find your projects")
-
-        with st.form("project_history_form"):
-
-            entered_email = st.text_input(
-                "Registered Email Address",
-                placeholder="you@example.com"
-            )
-
-            search_projects = st.form_submit_button(
-                "View My Projects",
-                use_container_width=True
-            )
-
-        if not search_projects:
-
-            st.info(
-                "Enter the email address used when creating "
-                "your projects to access your project history."
-            )
-
-            st.stop()
-
-        if not entered_email.strip():
-
-            st.warning("Please enter your email address.")
-            st.stop()
-
-        student_email = entered_email.strip()
 
     connection = get_connection()
 
@@ -865,7 +992,7 @@ elif st.session_state.active_page == "My Projects":
             FROM students
             WHERE email = ?
             """,
-            (student_email.strip(),)
+            (user["email"],)
         )
 
         student_record = cursor.fetchone()
@@ -873,7 +1000,7 @@ elif st.session_state.active_page == "My Projects":
         if student_record is None:
 
             st.info(
-                "No account was found with this email address. "
+                "You haven't created any projects yet. "
                 "Create your first project to get started."
             )
 
@@ -905,10 +1032,6 @@ elif st.session_state.active_page == "My Projects":
 
                 st.markdown(
                     f"### Welcome back, {student_record['name']}"
-                )
-
-                st.caption(
-                    "Your academic projects and development history."
                 )
 
                 col1, col2 = st.columns(2)
@@ -964,7 +1087,7 @@ elif st.session_state.active_page == "My Projects":
                         f"Created: {selected_project['created_at']}"
                     )
 
-                st.markdown("### Generated AI Guidance")
+                section_title("generated ai guidance")
 
                 cursor.execute(
                     """
@@ -981,7 +1104,11 @@ elif st.session_state.active_page == "My Projects":
 
                     for index, output in enumerate(saved_outputs):
 
-                        with st.expander(output["agent_name"]):
+                        icon = get_agent(output["agent_name"])["icon"]
+
+                        with st.expander(
+                            f"{icon}  {output['agent_name']}"
+                        ):
 
                             st.markdown(output["output_content"])
 
@@ -1034,6 +1161,12 @@ elif st.session_state.active_page == "My Projects":
 
 elif st.session_state.active_page == "Agent Workspace":
 
+    page_header(
+        "~/innovexa / workspace",
+        "AI Development Workspace",
+        "Eight agents, one pipeline, one complete project package."
+    )
+
     if st.button(
         "← Back to Project Configuration",
         key="workspace_back"
@@ -1059,42 +1192,42 @@ elif st.session_state.active_page == "Agent Workspace":
         student = st.session_state.student
         details = st.session_state.project_details
 
-        st.markdown(f"## {details['title']}")
-
-        st.caption(
-            f"{student['domain']} · {student['skill_level']} · "
-            f"{', '.join(student['languages'])}"
+        chips = "".join(
+            f'<span class="pm-chip">{esc(c)}</span>'
+            for c in [
+                student["domain"],
+                student["skill_level"],
+                *student["languages"]
+            ]
         )
 
-        st.divider()
+        st.markdown(
+            compact(
+                f"""
+                <div class="pm-project">
+                <div class="pm-kicker">selected project</div>
+                <h2>{esc(details['title'])}</h2>
+                {chips}
+                </div>
+                """
+            ),
+            unsafe_allow_html=True
+        )
 
-        agent_names = [
-            "Research Agent",
-            "Architecture Agent",
-            "Technology Recommendation Agent",
-            "Planning Agent",
-            "Coding Agent",
-            "Documentation Agent",
-            "Evaluation Agent"
-        ]
-
-        st.markdown("### Your AI development team")
-
-        agent_cols = st.columns(4)
-
-        for i, agent_name in enumerate(agent_names):
-
-            with agent_cols[i % 4]:
-
-                with st.container(border=True):
-
-                    st.caption(f"AGENT {i + 1}")
-                    st.markdown(f"**{agent_name}**")
-                    st.caption("Specialized AI assistant")
-
-        st.write("")
+        # Pipeline order = the 7 agents after the Project Advisor,
+        # which already ran when the ideas were generated.
 
         if st.session_state.outputs is None:
+
+            tracker_slot = st.empty()
+            stage_slot = st.empty()
+
+            states = ["done"] + ["pending"] * (len(ALL_AGENT_NAMES) - 1)
+
+            tracker_slot.markdown(
+                pipeline_tracker_html(ALL_AGENT_NAMES, states),
+                unsafe_allow_html=True
+            )
 
             st.info(
                 "Run the development pipeline to generate research, "
@@ -1106,6 +1239,10 @@ elif st.session_state.active_page == "Agent Workspace":
                 "▶ Start AI Development Pipeline",
                 use_container_width=True
             ):
+
+                durations = {}
+                outputs = {}
+                current = 0
 
                 try:
 
@@ -1119,71 +1256,6 @@ elif st.session_state.active_page == "Agent Workspace":
                     )
 
                     st.session_state.project_id = project_id
-
-                    outputs = {}
-
-                    progress = st.progress(0)
-
-                    status = st.status(
-                        "Starting AI agents...",
-                        expanded=True
-                    )
-
-                    def execute_agent(agent_name, function):
-
-                        status.write(f"Running {agent_name}...")
-
-                        result = str(function())
-
-                        outputs[agent_name] = result
-
-                        save_agent_output(
-                            project_id,
-                            agent_name,
-                            result
-                        )
-
-                        progress.progress(
-                            len(outputs) / len(agent_names)
-                        )
-
-                        status.write(f"Completed: {agent_name}")
-
-                    # RESEARCH AGENT
-
-                    execute_agent(
-                        "Research Agent",
-                        lambda: research_agent(
-                            details["title"],
-                            details["description"],
-                            student["model_type"]
-                        )
-                    )
-
-                    # ARCHITECTURE AGENT
-
-                    execute_agent(
-                        "Architecture Agent",
-                        lambda: architecture_agent(
-                            details["title"],
-                            details["description"],
-                            student["model_type"]
-                        )
-                    )
-
-                    # TECHNOLOGY RECOMMENDATION AGENT
-
-                    execute_agent(
-                        "Technology Recommendation Agent",
-                        lambda: technolgy_recommendation_agent(
-                            details["title"],
-                            details["description"],
-                            student["skill_level"],
-                            student["model_type"]
-                        )
-                    )
-
-                    # PLANNING AGENT + MCP
 
                     def run_planning():
 
@@ -1201,16 +1273,31 @@ elif st.session_state.active_page == "Agent Workspace":
 
                         return plan
 
-                    execute_agent(
-                        "Planning Agent",
-                        run_planning
-                    )
+                    pipeline = [
 
-                    # CODING AGENT
+                        ("Research Agent", lambda: research_agent(
+                            details["title"],
+                            details["description"],
+                            student["model_type"]
+                        )),
 
-                    execute_agent(
-                        "Coding Agent",
-                        lambda: coding_agent(
+                        ("Architecture Agent", lambda: architecture_agent(
+                            details["title"],
+                            details["description"],
+                            student["model_type"]
+                        )),
+
+                        ("Technology Recommendation Agent",
+                         lambda: technolgy_recommendation_agent(
+                             details["title"],
+                             details["description"],
+                             student["skill_level"],
+                             student["model_type"]
+                         )),
+
+                        ("Planning Agent", run_planning),
+
+                        ("Coding Agent", lambda: coding_agent(
                             project_title=details["title"],
                             project_description=details["description"],
                             programming_language=", ".join(
@@ -1220,14 +1307,20 @@ elif st.session_state.active_page == "Agent Workspace":
                             module_requirements=details["requirements"],
                             skill_level=student["skill_level"],
                             model_type=student["model_type"]
-                        )
-                    )
+                        )),
 
-                    # DOCUMENTATION AGENT
+                        ("Documentation Agent",
+                         lambda: documentation_agent(
+                             project_title=details["title"],
+                             project_description=details["description"],
+                             programming_languages=", ".join(
+                                 student["languages"]
+                             ),
+                             skill_level=student["skill_level"],
+                             model_type=student["model_type"]
+                         )),
 
-                    execute_agent(
-                        "Documentation Agent",
-                        lambda: documentation_agent(
+                        ("Evaluation Agent", lambda: evaluation_agent(
                             project_title=details["title"],
                             project_description=details["description"],
                             programming_languages=", ".join(
@@ -1235,35 +1328,68 @@ elif st.session_state.active_page == "Agent Workspace":
                             ),
                             skill_level=student["skill_level"],
                             model_type=student["model_type"]
-                        )
-                    )
+                        ))
+                    ]
 
-                    # EVALUATION AGENT
+                    for position, (agent_name, function) in enumerate(
+                        pipeline,
+                        start=1
+                    ):
 
-                    execute_agent(
-                        "Evaluation Agent",
-                        lambda: evaluation_agent(
-                            project_title=details["title"],
-                            project_description=details["description"],
-                            programming_languages=", ".join(
-                                student["languages"]
+                        current = position
+                        states[position] = "active"
+
+                        tracker_slot.markdown(
+                            pipeline_tracker_html(
+                                ALL_AGENT_NAMES, states, durations
                             ),
-                            skill_level=student["skill_level"],
-                            model_type=student["model_type"]
+                            unsafe_allow_html=True
                         )
-                    )
 
+                        # The CSS animation keeps playing in the browser
+                        # while Python waits for the model to answer.
+                        stage_slot.markdown(
+                            agent_working_html(
+                                agent_name,
+                                position,
+                                len(ALL_AGENT_NAMES)
+                            ),
+                            unsafe_allow_html=True
+                        )
+
+                        started = time.time()
+
+                        result = to_text(function())
+
+                        durations[agent_name] = time.time() - started
+                        outputs[agent_name] = result
+
+                        save_agent_output(
+                            project_id,
+                            agent_name,
+                            result
+                        )
+
+                        states[position] = "done"
+
+                    st.session_state.durations = durations
                     st.session_state.outputs = outputs
-
-                    status.update(
-                        label="All development agents completed!",
-                        state="complete",
-                        expanded=False
-                    )
 
                     st.rerun()
 
                 except Exception as e:
+
+                    if current:
+                        states[current] = "error"
+
+                    tracker_slot.markdown(
+                        pipeline_tracker_html(
+                            ALL_AGENT_NAMES, states, durations
+                        ),
+                        unsafe_allow_html=True
+                    )
+
+                    stage_slot.empty()
 
                     st.error(f"Pipeline error: {e}")
 
@@ -1275,6 +1401,18 @@ elif st.session_state.active_page == "Agent Workspace":
         else:
 
             outputs = st.session_state.outputs
+            durations = st.session_state.durations
+
+            st.markdown(
+                pipeline_tracker_html(
+                    ALL_AGENT_NAMES,
+                    ["done"] * len(ALL_AGENT_NAMES),
+                    durations
+                ),
+                unsafe_allow_html=True
+            )
+
+            st.write("")
 
             st.success(
                 f"Development package ready · "
@@ -1285,13 +1423,19 @@ elif st.session_state.active_page == "Agent Workspace":
 
             col1.metric("Completed Agents", len(outputs))
             col2.metric("Project ID", st.session_state.project_id)
-            col3.metric("Generated Reports", len(outputs))
+            col3.metric(
+                "Total Run Time",
+                f"{sum(durations.values()):.0f}s"
+            )
 
-            st.divider()
+            section_title("your ai-generated results")
 
-            st.markdown("### Explore your AI-generated results")
-
-            tabs = st.tabs(list(outputs.keys()))
+            tabs = st.tabs(
+                [
+                    f"{get_agent(name)['icon']} {get_agent(name)['short']}"
+                    for name in outputs.keys()
+                ]
+            )
 
             for tab, (agent_name, output) in zip(
                 tabs,
@@ -1323,7 +1467,7 @@ elif st.session_state.active_page == "Agent Workspace":
             st.download_button(
                 "⬇ Download Complete Development Report",
                 data=complete_report,
-                file_name="ProjectMentor_AI_Report.txt",
+                file_name="Innovexa_AI_Report.txt",
                 mime="text/plain",
                 use_container_width=True
             )
